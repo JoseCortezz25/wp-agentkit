@@ -1,0 +1,14 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+SCRIPT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
+PROJECT_DIR="$(cd -- "${SCRIPT_DIR}/.." && pwd)"
+
+cd "$PROJECT_DIR"
+
+"$SCRIPT_DIR/php" -l agentkit.php
+"$SCRIPT_DIR/php" -l uninstall.php
+
+while IFS= read -r -d '' file; do
+  "$SCRIPT_DIR/php" -l "$file"
+done < <(find includes -name '*.php' -print0)

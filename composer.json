@@ -1,0 +1,17 @@
+{
+  "name": "agentkit/wordpress-plugin",
+  "description": "AgentKit WordPress plugin",
+  "type": "wordpress-plugin",
+  "license": [
+    "MIT",
+    "GPL-2.0-or-later"
+  ],
+  "autoload": {
+    "psr-4": {
+      "AgentKit\\": "includes/"
+    }
+  },
+  "require": {
+    "smalot/pdfparser": "^2.12"
+  }
+}
