@@ -10,7 +10,7 @@ if ( ! defined( 'ABSPATH' ) ) {
 
 class AnthropicProvider extends BaseProvider {
 	public function get_available_models(): array {
-		return array( 'claude-3-5-sonnet-latest', 'claude-3-5-haiku-latest' );
+		return array( 'claude-opus-4-6', 'claude-sonnet-4-6', 'claude-haiku-4-5' );
 	}
 
 	public function embed( string $text ): array {

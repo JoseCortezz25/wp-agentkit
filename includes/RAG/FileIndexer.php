@@ -23,8 +23,15 @@ class FileIndexer {
 
 		$extension = strtolower( pathinfo( $file_path, PATHINFO_EXTENSION ) );
 		$allowed   = (array) $this->settings->get( 'files.allowed_types', array() );
+		$max_size  = max( 1, (int) $this->settings->get( 'files.max_file_size', 10485760 ) );
+		$max_total = max( 1, (int) $this->settings->get( 'files.max_total_files', 50 ) );
+		$file_size = (int) filesize( $file_path );
 
 		if ( ! in_array( $extension, $allowed, true ) ) {
+			return;
+		}
+
+		if ( $file_size <= 0 || $file_size > $max_size ) {
 			return;
 		}
 
@@ -36,13 +43,19 @@ class FileIndexer {
 			return;
 		}
 
+		$total = (int) $wpdb->get_var( "SELECT COUNT(*) FROM {$table}" ); // phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery,WordPress.DB.PreparedSQL.NotPrepared
+
+		if ( $total >= $max_total ) {
+			return;
+		}
+
 		$wpdb->insert( // phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery
 			$table,
 			array(
 				'attachment_id' => $attachment_id,
 				'original_name' => basename( $file_path ),
 				'file_type'     => $extension,
-				'file_size'     => (int) filesize( $file_path ),
+				'file_size'     => $file_size,
 				'chunk_count'   => 0,
 				'status'        => 'pending',
 				'uploaded_by'   => (int) \get_current_user_id(),

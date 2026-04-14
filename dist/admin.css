@@ -86,6 +86,15 @@
   border: 1px solid #cbd5e1;
 }
 
+.agentkit-model-control {
+  display: grid;
+  gap: 10px;
+}
+
+.agentkit-model-custom.is-hidden {
+  display: none;
+}
+
 .agentkit-field textarea.lg {
   min-height: 160px;
 }
@@ -228,6 +237,83 @@
   display: flex;
   gap: 12px;
   margin: 16px 0 20px;
+}
+
+.agentkit-inline-form-manual {
+  margin-top: 8px;
+}
+
+.agentkit-subtitle {
+  margin: 20px 0 0;
+}
+
+.agentkit-upload-box {
+  border: 1px solid #dbe2ea;
+  border-radius: 14px;
+  padding: 14px;
+  background: #f8fafc;
+}
+
+.agentkit-upload-help {
+  margin: 0 0 10px;
+  color: #334155;
+}
+
+.agentkit-dropzone {
+  border: 2px dashed #94a3b8;
+  border-radius: 12px;
+  padding: 16px;
+  background: #fff;
+  display: grid;
+  gap: 6px;
+  cursor: pointer;
+}
+
+.agentkit-dropzone strong {
+  color: #0f172a;
+}
+
+.agentkit-dropzone span {
+  color: #64748b;
+  font-size: 13px;
+}
+
+.agentkit-dropzone.is-dragging,
+.agentkit-dropzone:focus {
+  outline: none;
+  border-color: #2563eb;
+  box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.12);
+}
+
+#agentkit-file-input {
+  margin-top: 6px;
+}
+
+.agentkit-upload-meta {
+  margin: 10px 0 0;
+  color: #475569;
+}
+
+.agentkit-upload-status {
+  margin: 12px 0 0;
+  padding: 10px 12px;
+  border-radius: 10px;
+  font-weight: 600;
+}
+
+.agentkit-upload-status.is-success {
+  background: #dcfce7;
+  color: #166534;
+}
+
+.agentkit-upload-status.is-uploading {
+  background: #dbeafe;
+  color: #1d4ed8;
+}
+
+.agentkit-upload-status.is-error {
+  background: #fee2e2;
+  color: #991b1b;
 }
 
 .agentkit-table {

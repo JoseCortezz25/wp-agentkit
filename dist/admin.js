@@ -9,8 +9,50 @@
     settings: JSON.parse(JSON.stringify(config.settings || {})),
     stats: null,
     files: [],
+    filesPollingTimer: null,
+    upload: {
+      status: "idle",
+      message: "",
+      processed: 0,
+      total: 0,
+      failures: 0,
+    },
+    selectedFiles: [],
     conversations: [],
     activeTab: "dashboard",
+  };
+
+  var providerCatalog = {
+    openai: {
+      chat: ["gpt-5.4", "gpt-5.4-mini", "gpt-5.4-nano"],
+      embedding: ["text-embedding-3-small", "text-embedding-3-large"],
+    },
+    anthropic: {
+      chat: ["claude-opus-4-6", "claude-sonnet-4-6", "claude-haiku-4-5"],
+      embedding: ["none"],
+    },
+    gemini: {
+      chat: [
+        "gemini-3-flash-preview",
+        "gemini-3-pro-preview",
+        "gemini-2.5-pro",
+        "gemini-2.5-flash",
+        "gemini-2.5-flash-lite",
+      ],
+      embedding: ["gemini-embedding-2-preview", "gemini-embedding-001"],
+    },
+    openrouter: {
+      chat: [
+        "openai/gpt-5.2",
+        "anthropic/claude-sonnet-4-6",
+        "google/gemini-2.5-pro",
+        "google/gemini-3-flash-preview",
+      ],
+      embedding: [
+        "openai/text-embedding-3-small",
+        "google/gemini-embedding-2-preview",
+      ],
+    },
   };
 
   function api(path, options) {
@@ -27,6 +69,31 @@
       ),
     ).then(function (response) {
       return response.json();
+    });
+  }
+
+  function apiForm(path, formData) {
+    return fetch(config.restUrl + path, {
+      method: "POST",
+      headers: {
+        "X-WP-Nonce": config.nonce,
+      },
+      body: formData,
+    }).then(function (response) {
+      return response
+        .json()
+        .catch(function () {
+          return { message: "Respuesta inválida del servidor." };
+        })
+        .then(function (payload) {
+          if (!response.ok || (payload && payload.code)) {
+            throw new Error(
+              (payload && payload.message) || "No se pudo subir el archivo.",
+            );
+          }
+
+          return payload || {};
+        });
     });
   }
 
@@ -194,15 +261,21 @@
       ) +
       field(
         "Chat model",
-        '<input data-setting="provider.chat_model" value="' +
-          escapeAttr(provider.chat_model || "") +
-          '" />',
+        modelControl(
+          "provider.chat_model",
+          provider.name || "openai",
+          "chat",
+          provider.chat_model || "",
+        ),
       ) +
       field(
         "Embedding model",
-        '<input data-setting="provider.embedding_model" value="' +
-          escapeAttr(provider.embedding_model || "") +
-          '" />',
+        modelControl(
+          "provider.embedding_model",
+          provider.name || "openai",
+          "embedding",
+          provider.embedding_model || "",
+        ),
       ) +
       '<button type="button" data-action="test-provider" data-target="primary">Test primario</button>' +
       "</div>" +
@@ -228,15 +301,21 @@
       ) +
       field(
         "Chat model",
-        '<input data-setting="fallback_provider.chat_model" value="' +
-          escapeAttr(fallback.chat_model || "") +
-          '" />',
+        modelControl(
+          "fallback_provider.chat_model",
+          fallback.name || "openai",
+          "chat",
+          fallback.chat_model || "",
+        ),
       ) +
       field(
         "Embedding model",
-        '<input data-setting="fallback_provider.embedding_model" value="' +
-          escapeAttr(fallback.embedding_model || "") +
-          '" />',
+        modelControl(
+          "fallback_provider.embedding_model",
+          fallback.name || "openai",
+          "embedding",
+          fallback.embedding_model || "",
+        ),
       ) +
       '<button type="button" data-action="test-provider" data-target="fallback">Test fallback</button>' +
       "</div>" +
@@ -294,6 +373,25 @@
   }
 
   function renderKnowledge() {
+    var fileSettings = state.settings.files || {};
+    var allowedTypes = (fileSettings.allowed_types || [])
+      .map(function (type) {
+        return String(type || "")
+          .trim()
+          .toLowerCase();
+      })
+      .filter(Boolean);
+    var maxFileSize = Number(fileSettings.max_file_size || 0);
+    var uploadCopy =
+      "Tipos: " +
+      (allowedTypes.length
+        ? allowedTypes.join(", ")
+        : "configuración por defecto") +
+      " · Máx archivo: " +
+      (maxFileSize > 0 ? formatBytes(maxFileSize) : "-");
+    var hasUploadFeedback =
+      state.upload.message && state.upload.status !== "idle";
+
     return (
       "" +
       "<section>" +
@@ -304,8 +402,30 @@
       '<button type="button" data-action="refresh-files">Actualizar archivos</button>' +
       "</div>" +
       "</div>" +
-      "<p>Para indexar archivos ya subidos a WordPress, usa el ID del attachment.</p>" +
-      '<div class="agentkit-inline-form">' +
+      '<div class="agentkit-upload-box">' +
+      '<p class="agentkit-upload-help">Sube archivos aquí para agregarlos a la base de conocimiento.</p>' +
+      '<div id="agentkit-dropzone" class="agentkit-dropzone" tabindex="0">' +
+      "<strong>Arrastra archivos aquí</strong><span>o selecciónalos manualmente</span>" +
+      '<input id="agentkit-file-input" type="file" multiple accept="' +
+      escapeAttr(fileAccept(allowedTypes)) +
+      '" />' +
+      "</div>" +
+      '<div class="agentkit-actions-inline">' +
+      '<button type="button" data-action="upload-files">Subir archivos</button>' +
+      "</div>" +
+      '<p class="agentkit-upload-meta">' +
+      escapeHtml(uploadCopy) +
+      "</p>" +
+      (hasUploadFeedback
+        ? '<p class="agentkit-upload-status is-' +
+          escapeAttr(state.upload.status) +
+          '">' +
+          escapeHtml(state.upload.message) +
+          "</p>"
+        : "") +
+      "</div>" +
+      '<h3 class="agentkit-subtitle">Registrar por Attachment ID (manual)</h3>' +
+      '<div class="agentkit-inline-form agentkit-inline-form-manual">' +
       '<input id="agentkit-attachment-id" type="number" placeholder="Attachment ID" />' +
       '<button type="button" data-action="register-file">Registrar archivo</button>' +
       "</div>" +
@@ -415,6 +535,50 @@
         })
         .join("") +
       "</select>"
+    );
+  }
+
+  function modelControl(setting, providerName, type, value) {
+    var options = ((providerCatalog[providerName] || {})[type] || []).slice();
+    var current = value || options[0] || "";
+    var isCustom = current && options.indexOf(current) === -1;
+    var selectedValue = isCustom ? "__custom__" : current;
+
+    return (
+      '<div class="agentkit-model-control">' +
+      '<select data-model-select="' +
+      setting +
+      '" data-provider-name="' +
+      providerName +
+      '" data-model-type="' +
+      type +
+      '">' +
+      options
+        .map(function (option) {
+          var label = option === "none" ? "Sin embeddings nativos" : option;
+          return (
+            '<option value="' +
+            option +
+            '"' +
+            (option === selectedValue ? " selected" : "") +
+            ">" +
+            escapeHtml(label) +
+            "</option>"
+          );
+        })
+        .join("") +
+      '<option value="__custom__"' +
+      (selectedValue === "__custom__" ? " selected" : "") +
+      ">Custom…</option>" +
+      "</select>" +
+      '<input class="agentkit-model-custom' +
+      (selectedValue === "__custom__" ? "" : " is-hidden") +
+      '" data-setting="' +
+      setting +
+      '" value="' +
+      escapeAttr(isCustom ? current : selectedValue === "none" ? "" : current) +
+      '" placeholder="Model ID personalizado" />' +
+      "</div>"
     );
   }
 
@@ -633,6 +797,35 @@
     );
   }
 
+  function fileAccept(types) {
+    if (!types || !types.length) return "";
+    return types
+      .map(function (type) {
+        return "." + String(type).replace(/^\.+/, "");
+      })
+      .join(",");
+  }
+
+  function formatBytes(value) {
+    var bytes = Number(value || 0);
+    if (bytes <= 0) return "0 B";
+    var units = ["B", "KB", "MB", "GB"];
+    var idx = Math.min(
+      Math.floor(Math.log(bytes) / Math.log(1024)),
+      units.length - 1,
+    );
+    var sized = bytes / Math.pow(1024, idx);
+    return sized.toFixed(idx === 0 ? 0 : 1) + " " + units[idx];
+  }
+
+  function setUploadStatus(status, message, processed, total, failures) {
+    state.upload.status = status || "idle";
+    state.upload.message = message || "";
+    state.upload.processed = Number(processed || 0);
+    state.upload.total = Number(total || 0);
+    state.upload.failures = Number(failures || 0);
+  }
+
   function bindEvents() {
     Array.prototype.forEach.call(
       root.querySelectorAll("[data-tab]"),
@@ -653,6 +846,26 @@
       },
     );
 
+    Array.prototype.forEach.call(
+      root.querySelectorAll("[data-model-select]"),
+      function (select) {
+        select.addEventListener("change", function () {
+          var setting = select.getAttribute("data-model-select");
+          var customInput = select.parentNode.querySelector(
+            '[data-setting="' + setting + '"]',
+          );
+          if (select.value === "__custom__") {
+            customInput.classList.remove("is-hidden");
+            customInput.focus();
+            return;
+          }
+          customInput.classList.add("is-hidden");
+          customInput.value = select.value === "none" ? "" : select.value;
+          setDeepValue(setting, customInput.value);
+        });
+      },
+    );
+
     bindAction("save-settings", saveSettings);
     bindAction("refresh-dashboard", loadDashboard);
     bindAction("refresh-files", loadFiles);
@@ -661,7 +874,61 @@
       api("/index", { method: "POST" }).then(loadDashboard);
     });
     bindAction("register-file", registerFile);
+    bindAction("upload-files", uploadFiles);
     bindAction("export-conversations", exportConversations);
+
+    var fileInput = root.querySelector("#agentkit-file-input");
+    if (fileInput) {
+      fileInput.addEventListener("change", function () {
+        state.selectedFiles = Array.prototype.slice.call(fileInput.files || []);
+        setUploadStatus(
+          "idle",
+          state.selectedFiles.length
+            ? state.selectedFiles.length + " archivo(s) listos para subir."
+            : "",
+          0,
+          0,
+          0,
+        );
+        render();
+      });
+    }
+
+    var dropzone = root.querySelector("#agentkit-dropzone");
+    if (dropzone && fileInput) {
+      dropzone.addEventListener("click", function () {
+        fileInput.click();
+      });
+      dropzone.addEventListener("keydown", function (event) {
+        if (event.key === "Enter" || event.key === " ") {
+          event.preventDefault();
+          fileInput.click();
+        }
+      });
+      dropzone.addEventListener("dragover", function (event) {
+        event.preventDefault();
+        dropzone.classList.add("is-dragging");
+      });
+      dropzone.addEventListener("dragleave", function () {
+        dropzone.classList.remove("is-dragging");
+      });
+      dropzone.addEventListener("drop", function (event) {
+        event.preventDefault();
+        dropzone.classList.remove("is-dragging");
+        if (!event.dataTransfer || !event.dataTransfer.files) return;
+        state.selectedFiles = Array.prototype.slice.call(
+          event.dataTransfer.files || [],
+        );
+        setUploadStatus(
+          "idle",
+          state.selectedFiles.length + " archivo(s) listos para subir.",
+          0,
+          0,
+          0,
+        );
+        render();
+      });
+    }
 
     Array.prototype.forEach.call(
       root.querySelectorAll('[data-action="test-provider"]'),
@@ -692,7 +959,26 @@
             body: JSON.stringify({
               attachment_id: Number(button.getAttribute("data-id")),
             }),
-          }).then(loadFiles);
+          })
+            .then(function (result) {
+              if (result && result.code) {
+                throw new Error(
+                  result.message || "No se pudo reindexar el archivo.",
+                );
+              }
+              setUploadStatus("success", "Reindexación iniciada.", 0, 0, 0);
+              return loadFiles();
+            })
+            .catch(function (error) {
+              setUploadStatus(
+                "error",
+                (error && error.message) || "No se pudo reindexar el archivo.",
+                0,
+                0,
+                0,
+              );
+              render();
+            });
         });
       },
     );
@@ -706,7 +992,32 @@
             body: JSON.stringify({
               attachment_id: Number(button.getAttribute("data-id")),
             }),
-          }).then(loadFiles);
+          })
+            .then(function (result) {
+              if (result && result.code) {
+                throw new Error(
+                  result.message || "No se pudo eliminar el archivo.",
+                );
+              }
+              setUploadStatus(
+                "success",
+                "Archivo eliminado del índice.",
+                0,
+                0,
+                0,
+              );
+              return loadFiles();
+            })
+            .catch(function (error) {
+              setUploadStatus(
+                "error",
+                (error && error.message) || "No se pudo eliminar el archivo.",
+                0,
+                0,
+                0,
+              );
+              render();
+            });
         });
       },
     );
@@ -796,11 +1107,151 @@
   function registerFile() {
     var input = root.querySelector("#agentkit-attachment-id");
     var id = Number(input && input.value);
-    if (!id) return;
+    if (!id) {
+      setUploadStatus(
+        "error",
+        "Debes indicar un Attachment ID válido.",
+        0,
+        0,
+        0,
+      );
+      render();
+      return;
+    }
+
     api("/files", {
       method: "POST",
       body: JSON.stringify({ attachment_id: id }),
-    }).then(loadFiles);
+    })
+      .then(function (result) {
+        if (result && result.code) {
+          throw new Error(result.message || "No se pudo registrar el archivo.");
+        }
+        setUploadStatus(
+          "success",
+          "Archivo registrado para indexación.",
+          1,
+          1,
+          0,
+        );
+        return loadFiles();
+      })
+      .catch(function (error) {
+        setUploadStatus(
+          "error",
+          (error && error.message) || "No se pudo registrar el archivo.",
+          0,
+          1,
+          1,
+        );
+        render();
+      });
+  }
+
+  function uploadFiles() {
+    var input = root.querySelector("#agentkit-file-input");
+    var files = state.selectedFiles.length
+      ? state.selectedFiles.slice()
+      : Array.prototype.slice.call((input && input.files) || []);
+
+    if (!files.length) {
+      setUploadStatus(
+        "error",
+        "Selecciona al menos un archivo para subir.",
+        0,
+        0,
+        0,
+      );
+      render();
+      return;
+    }
+
+    var processed = 0;
+    var failures = 0;
+
+    setUploadStatus(
+      "uploading",
+      "Iniciando subida de " + files.length + " archivo(s)...",
+      0,
+      files.length,
+      0,
+    );
+    render();
+
+    var sequence = Promise.resolve();
+
+    files.forEach(function (file) {
+      sequence = sequence.then(function () {
+        setUploadStatus(
+          "uploading",
+          "Subiendo " +
+            file.name +
+            " (" +
+            (processed + 1) +
+            "/" +
+            files.length +
+            ")",
+          processed,
+          files.length,
+          failures,
+        );
+        render();
+
+        var formData = new FormData();
+        formData.append("file", file, file.name);
+
+        return apiForm("/files/upload", formData)
+          .then(function () {
+            processed += 1;
+          })
+          .catch(function (error) {
+            processed += 1;
+            failures += 1;
+            setUploadStatus(
+              "error",
+              "Error en " +
+                file.name +
+                ": " +
+                ((error && error.message) || "No se pudo subir el archivo."),
+              processed,
+              files.length,
+              failures,
+            );
+            render();
+          });
+      });
+    });
+
+    sequence.then(function () {
+      state.selectedFiles = [];
+      if (input) {
+        input.value = "";
+      }
+
+      if (failures > 0) {
+        setUploadStatus(
+          "error",
+          "Subida finalizada con errores. Correctos: " +
+            (files.length - failures) +
+            "/" +
+            files.length,
+          processed,
+          files.length,
+          failures,
+        );
+      } else {
+        setUploadStatus(
+          "success",
+          "Subida completada. Todos los archivos quedaron en cola de indexación.",
+          processed,
+          files.length,
+          0,
+        );
+      }
+
+      loadFiles();
+      render();
+    });
   }
 
   function exportConversations() {
@@ -825,8 +1276,28 @@
   function loadFiles() {
     return api("/files").then(function (files) {
       state.files = files || [];
+      syncFilesPolling();
       if (state.activeTab === "knowledge") render();
     });
+  }
+
+  function syncFilesPolling() {
+    var needsPolling = (state.files || []).some(function (file) {
+      var status = String((file && file.status) || "").toLowerCase();
+      return status === "pending" || status === "indexing";
+    });
+
+    if (needsPolling && !state.filesPollingTimer) {
+      state.filesPollingTimer = window.setInterval(function () {
+        loadFiles();
+      }, 5000);
+      return;
+    }
+
+    if (!needsPolling && state.filesPollingTimer) {
+      window.clearInterval(state.filesPollingTimer);
+      state.filesPollingTimer = null;
+    }
   }
 
   function loadConversations() {

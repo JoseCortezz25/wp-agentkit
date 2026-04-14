@@ -10,7 +10,7 @@ if ( ! defined( 'ABSPATH' ) ) {
 
 class GeminiProvider extends BaseProvider {
 	public function get_available_models(): array {
-		return array( 'gemini-2.0-flash', 'text-embedding-004' );
+		return array( 'gemini-3-flash-preview', 'gemini-3-pro-preview', 'gemini-2.5-pro', 'gemini-2.5-flash', 'gemini-2.5-flash-lite', 'gemini-embedding-2-preview', 'gemini-embedding-001' );
 	}
 
 	public function embed( string $text ): array {

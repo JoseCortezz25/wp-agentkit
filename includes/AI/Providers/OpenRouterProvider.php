@@ -10,7 +10,7 @@ if ( ! defined( 'ABSPATH' ) ) {
 
 class OpenRouterProvider extends BaseProvider {
 	public function get_available_models(): array {
-		return array( 'openai/gpt-4o-mini', 'anthropic/claude-3.5-haiku' );
+		return array( 'openai/gpt-5.2', 'anthropic/claude-sonnet-4-6', 'google/gemini-2.5-pro', 'google/gemini-3-flash-preview', 'openai/text-embedding-3-small', 'google/gemini-embedding-2-preview' );
 	}
 
 	public function embed( string $text ): array {

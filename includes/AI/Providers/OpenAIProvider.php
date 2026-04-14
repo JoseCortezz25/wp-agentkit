@@ -10,7 +10,7 @@ if ( ! defined( 'ABSPATH' ) ) {
 
 class OpenAIProvider extends BaseProvider {
 	public function get_available_models(): array {
-		return array( 'gpt-4o-mini', 'gpt-4.1-mini', 'text-embedding-3-small' );
+		return array( 'gpt-5.4', 'gpt-5.4-mini', 'gpt-5.4-nano', 'text-embedding-3-small', 'text-embedding-3-large' );
 	}
 
 	public function embed( string $text ): array {
